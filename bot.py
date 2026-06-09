@@ -1,11 +1,8 @@
 import os
 import asyncio
 import logging
-import random
-import string
 import time
 import threading
-from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from telegram import Update
@@ -20,9 +17,6 @@ from telegram.ext import (
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 
 try:
     from dotenv import load_dotenv
@@ -35,7 +29,6 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-WAITING_FOR_OTP = 1
 TARGET_URL = "https://www.instagram.com/accounts/emailsignup/" 
 
 class DummyHandler(BaseHTTPRequestHandler):
@@ -65,8 +58,8 @@ def init_driver():
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option("useAutomationExtension", False)
     
-    prefs = {"profile.managed_default_content_settings.images": 2}
-    chrome_options.add_experimental_option("prefs", prefs)
+    # Ee sari Images kuda load avvaniddam, appude exact ga page ela undo thelustundi
+    # prefs = {"profile.managed_default_content_settings.images": 2} (Removed for debugging)
     
     driver = webdriver.Chrome(options=chrome_options)
     driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
@@ -76,110 +69,62 @@ def init_driver():
     driver.set_page_load_timeout(30) 
     return driver
 
-def generate_strong_password(length=12):
-    chars = string.ascii_letters + string.digits + "!@#$%^&*"
-    return ''.join(random.choice(chars) for _ in range(length))
 
 async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    args = context.args
-    if len(args) < 3:
-        await update.message.reply_text("Usage: /create <FullName> <Username> <Email>")
-        return ConversationHandler.END
-
-    email = args[-1]
-    username = args[-2]
-    full_name = " ".join(args[:-2])
-    password = generate_strong_password()
-
-    await update.message.reply_text("🔍 Debugging started... Extracting dropdown info.")
+    await update.message.reply_text("📸 Page load ayyaka asalu em kanipistondo Full Screenshot theestunnanu. Please wait...")
 
     try:
         driver = init_driver()
-        wait = WebDriverWait(driver, 15) 
         
+        # 1. Open URL
         driver.get(TARGET_URL)
-        time.sleep(6) 
         
-        try:
-            driver.execute_script("document.querySelectorAll('[role=\"dialog\"]').forEach(e => e.remove());")
-        except:
-            pass
-
-        inputs = wait.until(EC.presence_of_all_elements_located((By.TAG_NAME, "input")))
-        visible_inputs = [inp for inp in inputs if inp.is_displayed() and inp.get_attribute("type") != "hidden"]
-
-        email_box = visible_inputs[0]
-        pass_box = visible_inputs[1]
-        name_box = visible_inputs[2]
-        user_box = visible_inputs[3]
-
-        email_box.click()
-        email_box.send_keys(email)
-        pass_box.click()
-        pass_box.send_keys(password)
-        name_box.click()
-        name_box.send_keys(full_name)
-        user_box.click()
-        user_box.send_keys(username)
+        # 2. Wait for a long time to let everything load (Popups, Captchas, etc.)
+        time.sleep(8) 
         
-        time.sleep(2)
-
-        # ==========================================
-        # DEBUGGING: EXTRACTING DROPDOWN DATA
-        # ==========================================
-        debug_msg = "⚙️ **DROPDOWN ANALYSIS:**\n\n"
+        # 3. Take Full Screenshot
+        driver.save_screenshot("full_page_debug.png")
         
-        try:
-            selects = driver.find_elements(By.TAG_NAME, "select")
-            
-            for i, select_box in enumerate(selects):
-                title = select_box.get_attribute("title")
-                debug_msg += f"**Box {i+1} (Title: '{title}'):**\n"
-                
-                # Get first 4 options from this box
-                options = select_box.find_elements(By.TAG_NAME, "option")
-                for opt in options[:4]:
-                    debug_msg += f" - Text: `{opt.text}` | Value: `{opt.get_attribute('value')}`\n"
-                debug_msg += "...\n\n"
-                
-            await update.message.reply_text(debug_msg, parse_mode="Markdown")
+        with open("full_page_debug.png", "rb") as photo:
+            await update.message.reply_photo(
+                photo=photo, 
+                caption="🔍 **Idiగో Bot ki kanipistunna real Instagram page!**\n\nIkkada emundo chudu, asalu form load ayyinda leka block chesara ani telisipotundi.",
+                parse_mode="Markdown"
+            )
 
-            # Click the Month box and take a photo just in case
-            month_box = driver.find_element(By.XPATH, "//select[contains(@title, 'Month')]")
-            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", month_box)
-            month_box.click()
-            time.sleep(1)
-            
-            driver.save_screenshot("debug_open.png")
-            with open("debug_open.png", "rb") as photo:
-                await update.message.reply_photo(
-                    photo=photo, 
-                    caption="📸 Month dropdown click chesina tharvatha screenshot idi."
-                )
-
-        except Exception as dbg_err:
-            await update.message.reply_text(f"Dropdown data theeyadam lo error: {dbg_err}")
+        # Print Current URL to see if it redirected
+        current_url = driver.current_url
+        await update.message.reply_text(f"🔗 **Current URL:** `{current_url}`", parse_mode="Markdown")
 
         driver.quit()
         return ConversationHandler.END
 
     except Exception as e:
         error_msg = str(e)
+        logging.error(f"Error: {error_msg}")
+        await update.message.reply_text(f"⚠️ **Error!**\n\n`{error_msg[:300]}`", parse_mode="Markdown")
         if 'driver' in locals() and driver is not None:
-            try:
-                driver.save_screenshot("error_form.png")
-                with open("error_form.png", "rb") as photo:
-                    await update.message.reply_photo(photo=photo, caption=f"Error!\n`{error_msg[:300]}`", parse_mode="Markdown")
-            except: pass
             driver.quit()
         return ConversationHandler.END
 
 def main():
     BOT_TOKEN = os.getenv("BOT_TOKEN")
-    if not BOT_TOKEN: return
+    
+    if not BOT_TOKEN:
+        logging.error("BOT_TOKEN environment variable is not set!")
+        return
+    
     app = ApplicationBuilder().token(BOT_TOKEN).build()
-    app.add_handler(ConversationHandler(entry_points=[CommandHandler("create", start_signup)], states={}, fallbacks=[]))
+
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("create", start_signup)],
+        states={},
+        fallbacks=[]
+    )
+
+    app.add_handler(conv_handler)
     threading.Thread(target=run_dummy_server, daemon=True).start()
+    print("Bot and Dummy Server are running...")
     app.run_polling()
 
 if __name__ == '__main__':

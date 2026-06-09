@@ -83,9 +83,12 @@ def generate_strong_password(length=12):
 
 def generate_random_dob():
     year = str(random.randint(1990, 2005))
-    month = str(random.randint(1, 12)) # Exact Month Number
-    day = str(random.randint(1, 28))   # Exact Day Number
-    return year, month, day
+    month_idx = random.randint(1, 12)
+    months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+    month_text = months[month_idx - 1]
+    month_val = str(month_idx)
+    day = str(random.randint(1, 28))
+    return year, month_val, month_text, day
 
 async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
@@ -137,38 +140,38 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         time.sleep(1)
 
         # ==========================================
-        # KOTHA CLICK LOGIC (Type cheyyakunda Click matrame)
+        # FIXED RENDER ORDER: MONTH -> DAY -> YEAR
         # ==========================================
         try:
-            year, month, day = generate_random_dob()
+            year, month_val, month_text, day = generate_random_dob()
             
-            # 1. Month Arrow meeda click -> list lo Number meeda click
-            month_box = wait.until(EC.presence_of_element_located((By.XPATH, "//select[@title='Month:']")))
+            # 1. Month 
+            month_box = wait.until(EC.presence_of_element_located((By.XPATH, "//select[contains(@title, 'Month')]")))
             driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", month_box)
             driver.execute_script("arguments[0].click();", month_box)
-            time.sleep(1)
-            month_opt = driver.find_element(By.XPATH, f"//select[@title='Month:']//option[@value='{month}']")
+            time.sleep(0.5)
+            month_opt = driver.find_element(By.XPATH, f"//select[contains(@title, 'Month')]//option[@value='{month_val}' or contains(text(), '{month_text[:3]}')]")
             driver.execute_script("arguments[0].click();", month_opt)
             time.sleep(0.5)
 
-            # 2. Day Arrow meeda click -> list lo Number meeda click
-            day_box = wait.until(EC.presence_of_element_located((By.XPATH, "//select[@title='Day:']")))
+            # 2. Day 
+            day_box = driver.find_element(By.XPATH, "//select[contains(@title, 'Day')]")
             driver.execute_script("arguments[0].click();", day_box)
-            time.sleep(1)
-            day_opt = driver.find_element(By.XPATH, f"//select[@title='Day:']//option[@value='{day}']")
+            time.sleep(0.5)
+            day_opt = driver.find_element(By.XPATH, f"//select[contains(@title, 'Day')]//option[@value='{day}' or text()='{day}']")
             driver.execute_script("arguments[0].click();", day_opt)
             time.sleep(0.5)
 
-            # 3. Year Arrow meeda click -> list lo Year meeda click
-            year_box = wait.until(EC.presence_of_element_located((By.XPATH, "//select[@title='Year:']")))
+            # 3. Year
+            year_box = driver.find_element(By.XPATH, "//select[contains(@title, 'Year')]")
             driver.execute_script("arguments[0].click();", year_box)
-            time.sleep(1)
-            year_opt = driver.find_element(By.XPATH, f"//select[@title='Year:']//option[@value='{year}']")
+            time.sleep(0.5)
+            year_opt = driver.find_element(By.XPATH, f"//select[contains(@title, 'Year')]//option[@value='{year}' or text()='{year}']")
             driver.execute_script("arguments[0].click();", year_opt)
             time.sleep(1)
 
         except Exception as e:
-            logging.info(f"DOB Clicks catch ayyindi: {e}")
+            logging.info(f"DOB fail ayyindi: {e}")
 
         name_box.click()
         name_box.send_keys(full_name)
@@ -178,15 +181,14 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_box.send_keys(username)
         time.sleep(3) 
 
-        # Validation tick ravadaniki wait chesi direct ga ENTER nokkutundi
-        user_box.send_keys(Keys.ENTER)
-        time.sleep(3)
-        
+        # Submit click
         try:
-            submit_btn = driver.find_element(By.XPATH, "//*[contains(text(), 'Sign up') or contains(text(), 'Submit')]")
+            submit_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//button[@type='submit' or contains(text(), 'Submit') or contains(text(), 'Sign up')]")))
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", submit_btn)
+            time.sleep(0.5)
             driver.execute_script("arguments[0].click();", submit_btn)
         except:
-            pass
+            user_box.send_keys(Keys.ENTER)
 
         wait.until(EC.presence_of_element_located((By.NAME, "email_confirmation_code")))
 

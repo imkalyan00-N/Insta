@@ -23,9 +23,8 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import Select # KOTHAGA ADD CHESINDI IDHE
+from selenium.webdriver.support.ui import Select 
 
-# Local testing kosam .env load
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -38,10 +37,7 @@ logging.basicConfig(
 )
 
 WAITING_FOR_OTP = 1
-
-# ==========================================
 TARGET_URL = "https://www.instagram.com/accounts/emailsignup/" 
-# ==========================================
 
 class DummyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -66,10 +62,23 @@ def init_driver():
     chrome_options.add_argument("--no-zygote")
     chrome_options.add_argument("--single-process")
     
+    # --- ANTI-BOT STEALTH OPTIONS ---
+    # Instagram ki real browser laaga kanipinchadaniki
+    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    chrome_options.add_experimental_option("useAutomationExtension", False)
+    
     prefs = {"profile.managed_default_content_settings.images": 2}
     chrome_options.add_experimental_option("prefs", prefs)
     
     driver = webdriver.Chrome(options=chrome_options)
+    
+    # Execute stealth JS script
+    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+        "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+    })
+    
     driver.set_page_load_timeout(30) 
     return driver
 
@@ -83,14 +92,23 @@ def generate_random_dob():
     day = str(random.randint(1, 28))
     return year, month, day
 
+# Kotha Function: JS tho force ga type cheyadaniki
+def safe_type(driver, wait, name_attr, text, step_name):
+    try:
+        ele = wait.until(EC.presence_of_element_located((By.NAME, name_attr)))
+        # Box munduki scroll chesi JS tho click chestam
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", ele)
+        time.sleep(0.5)
+        driver.execute_script("arguments[0].focus();", ele)
+        ele.send_keys(text)
+    except Exception as e:
+        raise Exception(f"❌ '{step_name}' field daggara aagipoindi. Idi fill avvatledu.")
+
 async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     
     if len(args) < 3:
-        await update.message.reply_text(
-            "Usage: /create <FullName> <Username> <Email>\n"
-            "Example: /create John Doe johndoe jd@example.com"
-        )
+        await update.message.reply_text("Usage: /create <FullName> <Username> <Email>")
         return ConversationHandler.END
 
     email = args[-1]
@@ -105,25 +123,25 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wait = WebDriverWait(driver, 15) 
         
         context.user_data['driver'] = driver
-        context.user_data['full_name'] = full_name
         context.user_data['username'] = username
         context.user_data['password'] = password 
 
         driver.get(TARGET_URL)
-        time.sleep(4) 
+        time.sleep(5) # JS & React motham load avvadaniki 5 secs wait
         
-        # 1. Email (NAME vadutunnam, idi chala strict)
-        email_input = wait.until(EC.element_to_be_clickable((By.NAME, "emailOrPhone")))
-        email_input.send_keys(email)
+        # Cookie popups emaina unte JS tho lepestam (to unblock UI)
+        try:
+            driver.execute_script("document.querySelectorAll('[role=\"dialog\"]').forEach(e => e.remove());")
+        except:
+            pass
+            
+        # 1-4 Fields (Force fill)
+        safe_type(driver, wait, "emailOrPhone", email, "Email")
+        safe_type(driver, wait, "password", password, "Password")
 
-        # 2. Password
-        pass_input = wait.until(EC.element_to_be_clickable((By.NAME, "password")))
-        pass_input.send_keys(password)
-
-        # 3. Birthday Section (Select vadi exact ga fill chestunnam)
+        # Birthday Section
         try:
             year, month, day = generate_random_dob()
-            
             month_box = Select(wait.until(EC.presence_of_element_located((By.XPATH, "//select[@title='Month:']"))))
             month_box.select_by_visible_text(month)
             
@@ -132,22 +150,17 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             year_box = Select(driver.find_element(By.XPATH, "//select[@title='Year:']"))
             year_box.select_by_visible_text(year)
-        except Exception as e:
-            logging.info(f"DOB section catch: {e}")
+        except Exception:
+            logging.info("DOB dropdowns kanipinchaledu, next step ki velthondi.")
 
-        # 4. Name
-        name_input = wait.until(EC.element_to_be_clickable((By.NAME, "fullName")))
-        name_input.send_keys(full_name)
-
-        # 5. Username
-        user_input = wait.until(EC.element_to_be_clickable((By.NAME, "username")))
-        user_input.send_keys(username)
+        safe_type(driver, wait, "fullName", full_name, "Full Name")
+        safe_type(driver, wait, "username", username, "Username")
         
         time.sleep(3) 
 
-        # 6. Submit Button
-        submit_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@type='submit']")))
-        submit_btn.click()
+        # Submit Button Force Click
+        submit_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//button[@type='submit']")))
+        driver.execute_script("arguments[0].click();", submit_btn)
 
         wait.until(EC.presence_of_element_located((By.NAME, "email_confirmation_code")))
 
@@ -155,14 +168,16 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return WAITING_FOR_OTP
 
     except Exception as e:
-        logging.error(f"Error in start_signup: {e}")
+        error_msg = str(e)
+        logging.error(f"Error in start_signup: {error_msg}")
+        
         if 'driver' in locals() and driver is not None:
             try:
                 driver.save_screenshot("error_form.png")
                 with open("error_form.png", "rb") as photo:
                     await update.message.reply_photo(
                         photo=photo, 
-                        caption=f"⚠️ **Error vachindi!** Browser lo form submit aagipoindi.\n\n`{str(e)[:400]}`",
+                        caption=f"⚠️ **Error!**\n\n`{error_msg[:300]}`",
                         parse_mode="Markdown"
                     )
             except Exception:
@@ -187,21 +202,30 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wait = WebDriverWait(driver, 15)
 
         otp_input = wait.until(EC.presence_of_element_located((By.NAME, "email_confirmation_code")))
+        driver.execute_script("arguments[0].focus();", otp_input)
         otp_input.send_keys(otp)
         
-        confirm_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Next') or contains(text(), 'Confirm')]")))
-        confirm_btn.click()
+        confirm_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(text(), 'Next') or contains(text(), 'Confirm')]")))
+        driver.execute_script("arguments[0].click();", confirm_btn)
 
-        skip_pic_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[text()='Skip']")))
-        skip_pic_btn.click()
-        time.sleep(2)
-
-        skip_friends_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[text()='Skip']")))
-        skip_friends_btn.click()
-        time.sleep(2)
-
-        skip_suggested_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[text()='Skip' or text()='Next']")))
-        skip_suggested_btn.click()
+        # Skips (Using JS click to avoid overlap issues)
+        time.sleep(4)
+        try:
+            skip_pic_btn = driver.find_element(By.XPATH, "//button[text()='Skip']")
+            driver.execute_script("arguments[0].click();", skip_pic_btn)
+        except: pass
+        
+        time.sleep(3)
+        try:
+            skip_friends_btn = driver.find_element(By.XPATH, "//button[text()='Skip']")
+            driver.execute_script("arguments[0].click();", skip_friends_btn)
+        except: pass
+        
+        time.sleep(3)
+        try:
+            skip_suggested_btn = driver.find_element(By.XPATH, "//button[text()='Skip' or text()='Next']")
+            driver.execute_script("arguments[0].click();", skip_suggested_btn)
+        except: pass
 
         wait.until(EC.presence_of_element_located((By.XPATH, "//*[@aria-label='Home']"))) 
         
@@ -220,7 +244,7 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 with open("error_skips.png", "rb") as photo:
                     await update.message.reply_photo(
                         photo=photo, 
-                        caption=f"⚠️ **Error vachindi!** OTP submission leda Skip steps daggara aagipoindi.\n\n`{str(e)[:400]}`",
+                        caption=f"⚠️ **Error vachindi!** OTP submission leda Skip steps daggara aagipoindi.\n\n`{str(e)[:300]}`",
                         parse_mode="Markdown"
                     )
             except Exception:

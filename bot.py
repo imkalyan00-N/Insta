@@ -65,7 +65,20 @@ def init_driver():
     chrome_options.add_argument("--disable-gpu") 
     chrome_options.add_argument("--window-size=1920,1080") 
     
+    # --- KOTHA MEMORY-SAVING OPTIONS ---
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument("--no-zygote")
+    chrome_options.add_argument("--single-process")
+    
+    # Images load avvakunda aapadam (RAM save avtundi, fast ga load avtundi)
+    prefs = {"profile.managed_default_content_settings.images": 2}
+    chrome_options.add_experimental_option("prefs", prefs)
+    
     driver = webdriver.Chrome(options=chrome_options)
+    
+    # Page 30 seconds kante ekkuva load aithe, hang avvakunda Error isthundi
+    driver.set_page_load_timeout(30) 
+    
     return driver
 
 def generate_strong_password(length=12):

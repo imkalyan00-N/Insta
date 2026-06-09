@@ -5,10 +5,11 @@ import random
 import string
 import time
 import threading
+import glob
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from telegram import Update
+from telegram import Update, InputMediaPhoto
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -60,7 +61,7 @@ def init_driver():
     chrome_options.add_argument("--window-size=1920,1080") 
     chrome_options.add_argument("--disable-extensions")
     
-    # Anti-bot User Agent
+    # Anti-bot
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -102,7 +103,23 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     full_name = " ".join(args[:-2])
     password = generate_strong_password()
 
-    await update.message.reply_text(f"Starting signup process for {email}...")
+    await update.message.reply_text("📸 Setup recording started... Please wait.")
+
+    # Patha screenshots ni clear cheddam
+    for f in glob.glob("step_*.png"):
+        try: os.remove(f)
+        except: pass
+
+    ss_count = [1]
+    
+    # Prati step ki photo theese function
+    def snap(name):
+        try:
+            if 'driver' in locals() and driver is not None:
+                driver.save_screenshot(f"step_{ss_count[0]:02d}_{name}.png")
+                ss_count[0] += 1
+        except:
+            pass
 
     try:
         driver = init_driver()
@@ -114,6 +131,7 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         driver.get(TARGET_URL)
         time.sleep(6) 
+        snap("Page_Loaded")
         
         try:
             driver.execute_script("document.querySelectorAll('[role=\"dialog\"]').forEach(e => e.remove());")
@@ -123,9 +141,6 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         inputs = wait.until(EC.presence_of_all_elements_located((By.TAG_NAME, "input")))
         visible_inputs = [inp for inp in inputs if inp.is_displayed() and inp.get_attribute("type") != "hidden"]
 
-        if len(visible_inputs) < 4:
-            raise Exception("Form load kaledu leda Instagram block chesindi.")
-
         email_box = visible_inputs[0]
         pass_box = visible_inputs[1]
         name_box = visible_inputs[2]
@@ -134,52 +149,53 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 1. Fill Email & Password
         email_box.click()
         email_box.send_keys(email)
-        time.sleep(1)
-
         pass_box.click()
         pass_box.send_keys(password)
         time.sleep(1)
+        snap("Email_Password_Filled")
 
         # ==========================================
-        # DIRECT KEYBOARD INJECTION (No Clicks!)
+        # DOB SELECTION
         # ==========================================
         try:
             year, month_val, month_text, day = generate_random_dob()
             
-            # Exact ga Title batti theeskuntundi (Language box ni avoid chestundi)
+            # MONTH
             month_box = driver.find_element(By.XPATH, "//select[contains(@title, 'Month') or contains(@title, 'month')]")
             driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", month_box)
             time.sleep(0.5)
             
-            # Month: Check if it uses Numbers or Text
             opts = month_box.find_elements(By.TAG_NAME, "option")
             if len(opts) > 1 and opts[1].text.strip().isdigit():
                 month_box.send_keys(month_val)
             else:
-                month_box.send_keys(month_text[:3]) # Sends "Jan", "Feb" etc directly
-            time.sleep(0.5)
+                month_box.send_keys(month_text[:3])
+            time.sleep(1)
+            snap("Month_Selected")
 
-            # Day
+            # DAY
             day_box = driver.find_element(By.XPATH, "//select[contains(@title, 'Day') or contains(@title, 'day')]")
             day_box.send_keys(day)
-            time.sleep(0.5)
+            time.sleep(1)
+            snap("Day_Selected")
 
-            # Year
+            # YEAR
             year_box = driver.find_element(By.XPATH, "//select[contains(@title, 'Year') or contains(@title, 'year')]")
             year_box.send_keys(year)
             time.sleep(1)
+            snap("Year_Selected")
 
         except Exception as dob_err:
-            logging.info(f"DOB send_keys failed: {dob_err}")
+            snap("DOB_Error")
+            raise Exception(f"DOB fail ayyindi: {dob_err}")
 
         # 3. Fill Name & Username
         name_box.click()
         name_box.send_keys(full_name)
-        time.sleep(1)
-
         user_box.click()
         user_box.send_keys(username)
-        time.sleep(3) 
+        time.sleep(2) 
+        snap("Name_Username_Filled")
 
         # 4. Submit
         try:
@@ -187,8 +203,12 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
             driver.execute_script("arguments[0].click();", submit_btn)
         except:
             user_box.send_keys(Keys.ENTER)
+        
+        time.sleep(3)
+        snap("Submit_Clicked")
 
         wait.until(EC.presence_of_element_located((By.NAME, "email_confirmation_code")))
+        snap("Success_OTP_Page")
 
         await update.message.reply_text("✅ Form submitted successfully! Please check your email and reply with the OTP.")
         return WAITING_FOR_OTP
@@ -198,16 +218,23 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Error in start_signup: {error_msg}")
         
         if 'driver' in locals() and driver is not None:
-            try:
-                driver.save_screenshot("error_form.png")
-                with open("error_form.png", "rb") as photo:
-                    await update.message.reply_photo(
-                        photo=photo, 
-                        caption=f"⚠️ **Error!**\n\n`{error_msg[:300]}`",
+            snap("Final_Error_Crash")
+            
+            # --- ALBUM PAMPINCHADAM ---
+            media = []
+            files = sorted(glob.glob("step_*.png"))
+            for f in files[-10:]: # Max 10 photos allow chestundi telegram
+                media.append(InputMediaPhoto(open(f, 'rb')))
+                
+            if media:
+                try:
+                    await update.message.reply_media_group(media=media)
+                    await update.message.reply_text(
+                        f"⚠️ **Error vachindi!**\n\n📸 Paina unna photos varusaga chudu, bot ekkada daaka vellindo, asalu em jarigindo exact ga telisipotundi.\n\n`{error_msg[:300]}`", 
                         parse_mode="Markdown"
                     )
-            except Exception:
-                pass
+                except Exception as ex:
+                    pass
             driver.quit()
         return ConversationHandler.END
 

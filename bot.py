@@ -113,7 +113,6 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(f"Starting mobile signup process for {email}...")
 
-    # Clear old screenshots
     for f in glob.glob("step_*.png"):
         try: os.remove(f)
         except: pass
@@ -123,34 +122,43 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         driver = init_driver()
         wait = WebDriverWait(driver, 15) 
         
-        # Save variables for the next steps
         context.user_data['driver'] = driver
         context.user_data['full_name'] = full_name
         context.user_data['username'] = username
         context.user_data['password'] = password 
 
-        # STEP 1: Open URL & Click "Sign up with email"
+        # STEP 1: Open URL
         driver.get(TARGET_URL)
-        time.sleep(4) 
+        time.sleep(5) 
         snap(driver, "Page_Loaded")
 
+        # ==========================================
+        # EXACT FIX: CLICK "Sign up with email"
+        # ==========================================
         try:
-            email_signup_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//*[contains(text(), 'Sign up with email') or contains(text(), 'email address')]")))
-            driver.execute_script("arguments[0].click();", email_signup_btn)
-            time.sleep(2)
-        except:
-            # Okavela direct ga email page vasthe skip chestundi
-            pass
-        
+            # Case insensitive search for "sign up with email"
+            email_switch_btn = wait.until(EC.presence_of_element_located((
+                By.XPATH, 
+                "//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'sign up with email')]"
+            )))
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", email_switch_btn)
+            time.sleep(1)
+            driver.execute_script("arguments[0].click();", email_switch_btn)
+            time.sleep(3) # Wait for Email box to load
+            snap(driver, "Switched_To_Email")
+        except Exception as e:
+            logging.info(f"Could not find or click email switch: {e}")
+
         # STEP 2: Enter Email & Click Next
-        email_box = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@name='emailOrPhone' or @type='email' or contains(@name, 'email')]")))
+        email_box = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@type='email' or contains(@name, 'email') or contains(@name, 'emailOrPhone')]")))
+        driver.execute_script("arguments[0].focus();", email_box)
         email_box.send_keys(email)
         snap(driver, "Email_Entered")
         
-        next_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Next') or contains(text(), 'NEXT')]")))
+        next_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(translate(text(), 'NEXT', 'next'), 'next')]")))
         driver.execute_script("arguments[0].click();", next_btn)
 
-        # STEP 3 (Part A): Wait for OTP box to appear to confirm email was accepted
+        # STEP 3: Wait for OTP box
         wait.until(EC.presence_of_element_located((By.NAME, "email_confirmation_code")))
         snap(driver, "Waiting_For_OTP")
 
@@ -164,10 +172,9 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if 'driver' in locals() and driver is not None:
             snap(driver, "Crash_Start_Signup")
             
-            # --- FIXED: Send Album on First Step Error ---
             media = []
             files = sorted(glob.glob("step_*.png"))
-            for f in files[-10:]: # Max 10 photos allow chestundi telegram
+            for f in files[-10:]:
                 media.append(InputMediaPhoto(open(f, 'rb')))
                 
             if media:
@@ -198,12 +205,12 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         wait = WebDriverWait(driver, 15)
 
-        # STEP 3 (Part B): Enter OTP & Click Next
+        # STEP 3 (Part B): Enter OTP
         otp_box = wait.until(EC.presence_of_element_located((By.NAME, "email_confirmation_code")))
         otp_box.send_keys(otp)
         snap(driver, "OTP_Entered")
         
-        next_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Next') or contains(text(), 'NEXT')]")))
+        next_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(translate(text(), 'NEXT', 'next'), 'next')]")))
         driver.execute_script("arguments[0].click();", next_btn)
 
         # STEP 4: Password Page
@@ -211,16 +218,15 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pass_box.send_keys(password)
         snap(driver, "Password_Entered")
         
-        next_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Next') or contains(text(), 'NEXT')]")))
+        next_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(translate(text(), 'NEXT', 'next'), 'next')]")))
         driver.execute_script("arguments[0].click();", next_btn)
 
         # STEP 5: Date of Birth Page
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "select")))
-        time.sleep(2) # Allow options to render
+        time.sleep(2)
         year, month, day = generate_random_dob()
         selects = driver.find_elements(By.TAG_NAME, "select")
         
-        # Identify Month, Day, Year by options count
         for s in selects:
             try:
                 opts = s.find_elements(By.TAG_NAME, "option")
@@ -244,7 +250,7 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
         snap(driver, "DOB_Selected")
         time.sleep(1)
-        next_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Next') or contains(text(), 'NEXT')]")))
+        next_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(translate(text(), 'NEXT', 'next'), 'next')]")))
         driver.execute_script("arguments[0].click();", next_btn)
 
         # STEP 6: Name Page
@@ -252,32 +258,30 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
         name_box.send_keys(full_name)
         snap(driver, "Name_Entered")
         
-        next_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Next') or contains(text(), 'NEXT')]")))
+        next_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(translate(text(), 'NEXT', 'next'), 'next')]")))
         driver.execute_script("arguments[0].click();", next_btn)
 
         # STEP 7: Username Page
         user_box = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@name='username']")))
         
-        # Clear existing suggestions and type ours
         user_box.send_keys(Keys.CONTROL + "a")
         user_box.send_keys(Keys.DELETE)
         user_box.send_keys(username)
         
-        # Wait for green tick (2-3 seconds)
         time.sleep(3)
         snap(driver, "Username_Entered")
         
-        next_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Next') or contains(text(), 'NEXT') or contains(text(), 'Sign up')]")))
+        next_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(translate(text(), 'NEXT', 'next'), 'next') or contains(text(), 'Sign up')]")))
         driver.execute_script("arguments[0].click();", next_btn)
 
-        # STEP 8: Terms and Policies Page ("I agree")
+        # STEP 8: Terms and Policies Page
         try:
-            agree_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'I agree')]")))
+            agree_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'I agree') or contains(text(), 'Agree')]")))
             snap(driver, "Terms_Page")
             driver.execute_script("arguments[0].click();", agree_btn)
-            time.sleep(5) # Wait for final account creation loading
+            time.sleep(5) 
         except Exception as e:
-            logging.info("I agree button skip ayyindi or load kaledu.")
+            logging.info("I agree button skip ayyindi.")
 
         snap(driver, "Final_Success")
 
@@ -295,7 +299,6 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if driver:
             snap(driver, "Error_OTP_Process")
             
-            # Send Debug Album
             media = []
             files = sorted(glob.glob("step_*.png"))
             for f in files[-10:]: 

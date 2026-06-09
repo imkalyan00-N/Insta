@@ -23,6 +23,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import Select # KOTHAGA ADD CHESINDI IDHE
 
 # Local testing kosam .env load
 try:
@@ -39,11 +40,9 @@ logging.basicConfig(
 WAITING_FOR_OTP = 1
 
 # ==========================================
-# 1. TARGET URL
-# ==========================================
 TARGET_URL = "https://www.instagram.com/accounts/emailsignup/" 
+# ==========================================
 
-# --- DUMMY WEB SERVER FOR RENDER FREE TIER ---
 class DummyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -55,7 +54,6 @@ def run_dummy_server():
     port = int(os.environ.get("PORT", 8080))
     server = HTTPServer(('0.0.0.0', port), DummyHandler)
     server.serve_forever()
-# ---------------------------------------------
 
 def init_driver():
     chrome_options = Options()
@@ -64,21 +62,15 @@ def init_driver():
     chrome_options.add_argument("--disable-dev-shm-usage") 
     chrome_options.add_argument("--disable-gpu") 
     chrome_options.add_argument("--window-size=1920,1080") 
-    
-    # --- MEMORY-SAVING OPTIONS (Render free tier kosam) ---
     chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument("--no-zygote")
     chrome_options.add_argument("--single-process")
     
-    # Images load avvakunda aapadam (RAM save avtundi)
     prefs = {"profile.managed_default_content_settings.images": 2}
     chrome_options.add_experimental_option("prefs", prefs)
     
     driver = webdriver.Chrome(options=chrome_options)
-    
-    # Page 30 seconds kante ekkuva load aithe, hang avvakunda Error isthundi
     driver.set_page_load_timeout(30) 
-    
     return driver
 
 def generate_strong_password(length=12):
@@ -117,65 +109,53 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['username'] = username
         context.user_data['password'] = password 
 
-        # Open Site
         driver.get(TARGET_URL)
+        time.sleep(4) 
         
-        # Site load avvadaniki koncham extra time
-        time.sleep(3) 
-        
-        # 1. Email
-        email_input = wait.until(EC.presence_of_element_located((By.XPATH, "//input[contains(@aria-label, 'Mobile number or email')]")))
+        # 1. Email (NAME vadutunnam, idi chala strict)
+        email_input = wait.until(EC.element_to_be_clickable((By.NAME, "emailOrPhone")))
         email_input.send_keys(email)
 
         # 2. Password
-        pass_input = wait.until(EC.presence_of_element_located((By.XPATH, "//input[contains(@aria-label, 'Password')]")))
+        pass_input = wait.until(EC.element_to_be_clickable((By.NAME, "password")))
         pass_input.send_keys(password)
 
-        # 3. Birthday Section
+        # 3. Birthday Section (Select vadi exact ga fill chestunnam)
         try:
             year, month, day = generate_random_dob()
             
-            month_box = wait.until(EC.element_to_be_clickable((By.XPATH, "//select[contains(@title, 'Month:')]")))
-            month_box.click()
-            month_option = driver.find_element(By.XPATH, f"//option[text()='{month}']")
-            month_option.click()
+            month_box = Select(wait.until(EC.presence_of_element_located((By.XPATH, "//select[@title='Month:']"))))
+            month_box.select_by_visible_text(month)
             
-            day_box = driver.find_element(By.XPATH, "//select[contains(@title, 'Day:')]")
-            day_box.click()
-            day_option = driver.find_element(By.XPATH, f"//option[text()='{day}']")
-            day_option.click()
+            day_box = Select(driver.find_element(By.XPATH, "//select[@title='Day:']"))
+            day_box.select_by_visible_text(day)
             
-            year_box = driver.find_element(By.XPATH, "//select[contains(@title, 'Year:')]")
-            year_box.click()
-            year_option = driver.find_element(By.XPATH, f"//option[text()='{year}']")
-            year_option.click()
+            year_box = Select(driver.find_element(By.XPATH, "//select[@title='Year:']"))
+            year_box.select_by_visible_text(year)
         except Exception as e:
             logging.info(f"DOB section catch: {e}")
 
         # 4. Name
-        name_input = wait.until(EC.presence_of_element_located((By.XPATH, "//input[contains(@aria-label, 'Full name')]")))
+        name_input = wait.until(EC.element_to_be_clickable((By.NAME, "fullName")))
         name_input.send_keys(full_name)
 
         # 5. Username
-        user_input = wait.until(EC.presence_of_element_located((By.XPATH, "//input[contains(@aria-label, 'Username')]")))
+        user_input = wait.until(EC.element_to_be_clickable((By.NAME, "username")))
         user_input.send_keys(username)
         
-        # Valiation tick ravadaniki wait
         time.sleep(3) 
 
         # 6. Submit Button
-        submit_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@type='submit' or contains(text(), 'Sign up')]")))
+        submit_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@type='submit']")))
         submit_btn.click()
 
-        # Wait for OTP input field to appear
-        wait.until(EC.presence_of_element_located((By.XPATH, "//input[contains(@name, 'email_confirmation_code') or contains(@aria-label, 'Confirmation code')]")))
+        wait.until(EC.presence_of_element_located((By.NAME, "email_confirmation_code")))
 
         await update.message.reply_text("✅ Form submitted successfully! Please check your email and reply with the OTP.")
         return WAITING_FOR_OTP
 
     except Exception as e:
         logging.error(f"Error in start_signup: {e}")
-        
         if 'driver' in locals() and driver is not None:
             try:
                 driver.save_screenshot("error_form.png")
@@ -186,7 +166,7 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         parse_mode="Markdown"
                     )
             except Exception:
-                await update.message.reply_text("Error vachindi kani screenshot theeyalekapoya.")
+                pass
             driver.quit()
         return ConversationHandler.END
 
@@ -206,28 +186,23 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         wait = WebDriverWait(driver, 15)
 
-        # STEP 1: Enter OTP & Confirm
-        otp_input = wait.until(EC.presence_of_element_located((By.XPATH, "//input[contains(@name, 'email_confirmation_code') or contains(@aria-label, 'Confirmation code')]")))
+        otp_input = wait.until(EC.presence_of_element_located((By.NAME, "email_confirmation_code")))
         otp_input.send_keys(otp)
         
         confirm_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Next') or contains(text(), 'Confirm')]")))
         confirm_btn.click()
 
-        # STEP 3: Add Profile Picture -> Skip
         skip_pic_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[text()='Skip']")))
         skip_pic_btn.click()
         time.sleep(2)
 
-        # STEP 4: Find Friends -> Skip
         skip_friends_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[text()='Skip']")))
         skip_friends_btn.click()
         time.sleep(2)
 
-        # STEP 5: Suggested Accounts -> Skip
         skip_suggested_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[text()='Skip' or text()='Next']")))
         skip_suggested_btn.click()
 
-        # STEP 6: Wait for Home Feed to load
         wait.until(EC.presence_of_element_located((By.XPATH, "//*[@aria-label='Home']"))) 
         
         await update.message.reply_text(
@@ -239,7 +214,6 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logging.error(f"Error in process_otp skips: {e}")
-        
         if driver:
             try:
                 driver.save_screenshot("error_skips.png")
@@ -250,8 +224,7 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         parse_mode="Markdown"
                     )
             except Exception:
-                await update.message.reply_text("An error occurred during final steps.")
-                
+                pass
     finally:
         if driver:
             driver.quit()
@@ -286,9 +259,7 @@ def main():
     )
 
     app.add_handler(conv_handler)
-
     threading.Thread(target=run_dummy_server, daemon=True).start()
-
     print("Bot and Dummy Server are running...")
     app.run_polling()
 

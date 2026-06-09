@@ -24,7 +24,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select 
-from selenium.webdriver.common.keys import Keys # Kothaga add chesam
+from selenium.webdriver.common.keys import Keys 
 
 try:
     from dotenv import load_dotenv
@@ -83,8 +83,9 @@ def generate_strong_password(length=12):
     return ''.join(random.choice(chars) for _ in range(length))
 
 def generate_random_dob():
+    # Value based DOB (1 to 12 instead of January to December)
     year = str(random.randint(1990, 2005))
-    month = random.choice(["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"])
+    month = str(random.randint(1, 12)) 
     day = str(random.randint(1, 28))
     return year, month, day
 
@@ -111,22 +112,19 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['password'] = password 
 
         driver.get(TARGET_URL)
-        time.sleep(6) # Page fully load avvadaniki
+        time.sleep(6) 
         
         try:
             driver.execute_script("document.querySelectorAll('[role=\"dialog\"]').forEach(e => e.remove());")
         except:
             pass
 
-        # === THE ULTIMATE BLIND BYPASS ===
-        # Screen meeda unna input fields anni oka list lo thechukuntunnam
         inputs = wait.until(EC.presence_of_all_elements_located((By.TAG_NAME, "input")))
         visible_inputs = [inp for inp in inputs if inp.is_displayed() and inp.get_attribute("type") != "hidden"]
 
         if len(visible_inputs) < 4:
             raise Exception("Form load kaledu leda Instagram block chesindi.")
 
-        # Varasaga perlatho sambandam lekunda fill chestunnam
         email_box = visible_inputs[0]
         pass_box = visible_inputs[1]
         name_box = visible_inputs[2]
@@ -140,16 +138,21 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pass_box.send_keys(password)
         time.sleep(1)
 
-        # DOB Section
+        # ==========================================
+        # KOTHA DOB LOGIC (Wait chesi, Values tho fill chestundi)
+        # ==========================================
         try:
             year, month, day = generate_random_dob()
-            selects = driver.find_elements(By.TAG_NAME, "select")
+            # Select boxes render ayye daka wait cheddam
+            selects = wait.until(EC.presence_of_all_elements_located((By.TAG_NAME, "select")))
             if len(selects) >= 3:
-                Select(selects[0]).select_by_visible_text(month)
-                Select(selects[1]).select_by_visible_text(day)
-                Select(selects[2]).select_by_visible_text(year)
+                # Text tho sambandam lekunda background number (value) tho select chestundi
+                Select(selects[0]).select_by_value(month)
+                Select(selects[1]).select_by_value(day)
+                Select(selects[2]).select_by_value(year)
+                time.sleep(1)
         except Exception as e:
-            logging.info("DOB dropdowns catch.")
+            logging.info(f"DOB fail ayyindi: {e}")
 
         name_box.click()
         name_box.send_keys(full_name)
@@ -157,10 +160,16 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         user_box.click()
         user_box.send_keys(username)
-        time.sleep(3)
+        time.sleep(3) 
 
-        submit_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
-        driver.execute_script("arguments[0].click();", submit_btn)
+        user_box.send_keys(Keys.ENTER)
+        
+        try:
+            time.sleep(1)
+            submit_btn = driver.find_element(By.XPATH, "//*[contains(text(), 'Sign up') or contains(text(), 'Submit')]")
+            driver.execute_script("arguments[0].click();", submit_btn)
+        except:
+            pass
 
         wait.until(EC.presence_of_element_located((By.NAME, "email_confirmation_code")))
 

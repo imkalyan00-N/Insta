@@ -60,7 +60,6 @@ def init_driver():
     chrome_options.add_argument("--window-size=1920,1080") 
     chrome_options.add_argument("--disable-extensions")
     
-    # Anti-bot
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -83,12 +82,9 @@ def generate_strong_password(length=12):
 
 def generate_random_dob():
     year = str(random.randint(1990, 2005))
-    month_idx = random.randint(1, 12)
-    months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
-    month_text = months[month_idx - 1]
-    month_val = str(month_idx)
+    month = str(random.randint(1, 12)) 
     day = str(random.randint(1, 28))
-    return year, month_val, month_text, day
+    return year, month, day
 
 async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
@@ -131,7 +127,6 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         name_box = visible_inputs[2]
         user_box = visible_inputs[3]
 
-        # 1. Fill Email & Password
         email_box.click()
         email_box.send_keys(email)
         time.sleep(1)
@@ -141,40 +136,63 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         time.sleep(1)
 
         # ==========================================
-        # EXACT CLICK LOGIC (Handles Number OR Name OR ShortName)
+        # THE "OPTION COUNT" MASTER TRICK
         # ==========================================
         try:
-            year, month_val, month_text, day = generate_random_dob()
+            year, month, day = generate_random_dob()
             
-            # MONTH (Checks value, full text, or short text)
-            month_box = wait.until(EC.presence_of_element_located((By.XPATH, "//select[contains(@title, 'Month')]")))
-            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", month_box)
-            driver.execute_script("arguments[0].click();", month_box)
-            time.sleep(1)
-            month_opt = driver.find_element(By.XPATH, f"//select[contains(@title, 'Month')]//option[@value='{month_val}' or text()='{month_text}' or text()='{month_text[:3]}']")
-            driver.execute_script("arguments[0].click();", month_opt)
-            time.sleep(0.5)
+            selects = driver.find_elements(By.TAG_NAME, "select")
+            month_sel = None
+            day_sel = None
+            year_sel = None
+            
+            # Options count ni batti yedi Month, yedi Day ani identify chestundi
+            for s in selects:
+                try:
+                    opts = s.find_elements(By.TAG_NAME, "option")
+                    count = len(opts)
+                    if 11 <= count <= 13: 
+                        month_sel = s
+                    elif 28 <= count <= 32: 
+                        day_sel = s
+                    elif count >= 50:
+                        # Language box ki kooda 50+ untayi, so value 'year' format (4 digits) undo ledo check chestundi
+                        val = opts[1].get_attribute("value")
+                        if val and val.isdigit() and len(val) == 4:
+                            year_sel = s
+                except:
+                    pass
 
-            # DAY
-            day_box = driver.find_element(By.XPATH, "//select[contains(@title, 'Day')]")
-            driver.execute_script("arguments[0].click();", day_box)
-            time.sleep(1)
-            day_opt = driver.find_element(By.XPATH, f"//select[contains(@title, 'Day')]//option[@value='{day}' or text()='{day}']")
-            driver.execute_script("arguments[0].click();", day_opt)
-            time.sleep(0.5)
-
-            # YEAR
-            year_box = driver.find_element(By.XPATH, "//select[contains(@title, 'Year')]")
-            driver.execute_script("arguments[0].click();", year_box)
-            time.sleep(1)
-            year_opt = driver.find_element(By.XPATH, f"//select[contains(@title, 'Year')]//option[@value='{year}' or text()='{year}']")
-            driver.execute_script("arguments[0].click();", year_opt)
-            time.sleep(1)
+            if month_sel and day_sel and year_sel:
+                # 1. Month Select
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", month_sel)
+                time.sleep(0.5)
+                month_sel.click() # Arrow Click
+                time.sleep(1)
+                m_opt = month_sel.find_element(By.XPATH, f".//option[@value='{month}']")
+                driver.execute_script("arguments[0].click();", m_opt) # Option Click
+                
+                # 2. Day Select
+                time.sleep(0.5)
+                day_sel.click() # Arrow Click
+                time.sleep(1)
+                d_opt = day_sel.find_element(By.XPATH, f".//option[@value='{day}']")
+                driver.execute_script("arguments[0].click();", d_opt) # Option Click
+                
+                # 3. Year Select
+                time.sleep(0.5)
+                year_sel.click() # Arrow Click
+                time.sleep(1)
+                y_opt = year_sel.find_element(By.XPATH, f".//option[@value='{year}']")
+                driver.execute_script("arguments[0].click();", y_opt) # Option Click
+                time.sleep(1)
+            else:
+                logging.info("DOB boxes kanipinchaledu.")
 
         except Exception as e:
-            logging.info(f"DOB fail ayyindi: {e}")
+            logging.info(f"DOB selection error: {e}")
 
-        # 3. Fill Name & Username
+        # Fill Name & Username
         name_box.click()
         name_box.send_keys(full_name)
         time.sleep(1)
@@ -183,12 +201,12 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_box.send_keys(username)
         time.sleep(3) 
 
-        # 4. Click Submit Button
+        # Submit
         try:
             submit_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
             driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", submit_btn)
             time.sleep(0.5)
-            driver.execute_script("arguments[0].click();", submit_btn)
+            submit_btn.click()
         except:
             user_box.send_keys(Keys.ENTER)
 

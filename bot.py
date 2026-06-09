@@ -83,7 +83,6 @@ def generate_strong_password(length=12):
     return ''.join(random.choice(chars) for _ in range(length))
 
 def generate_random_dob():
-    # Value based DOB (1 to 12 instead of January to December)
     year = str(random.randint(1990, 2005))
     month = str(random.randint(1, 12)) 
     day = str(random.randint(1, 28))
@@ -139,20 +138,28 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         time.sleep(1)
 
         # ==========================================
-        # KOTHA DOB LOGIC (Wait chesi, Values tho fill chestundi)
+        # ULTIMATE JS DOB FIX (For React apps)
         # ==========================================
         try:
             year, month, day = generate_random_dob()
-            # Select boxes render ayye daka wait cheddam
-            selects = wait.until(EC.presence_of_all_elements_located((By.TAG_NAME, "select")))
-            if len(selects) >= 3:
-                # Text tho sambandam lekunda background number (value) tho select chestundi
-                Select(selects[0]).select_by_value(month)
-                Select(selects[1]).select_by_value(day)
-                Select(selects[2]).select_by_value(year)
-                time.sleep(1)
+            js_script = f"""
+            var selects = document.querySelectorAll('select');
+            if(selects.length >= 3) {{
+                // Month
+                selects[0].value = '{month}';
+                selects[0].dispatchEvent(new Event('change', {{bubbles: true}}));
+                // Day
+                selects[1].value = '{day}';
+                selects[1].dispatchEvent(new Event('change', {{bubbles: true}}));
+                // Year
+                selects[2].value = '{year}';
+                selects[2].dispatchEvent(new Event('change', {{bubbles: true}}));
+            }}
+            """
+            driver.execute_script(js_script)
+            time.sleep(2) # React update avvadaniki wait
         except Exception as e:
-            logging.info(f"DOB fail ayyindi: {e}")
+            logging.info(f"DOB JS fail ayyindi: {e}")
 
         name_box.click()
         name_box.send_keys(full_name)
@@ -162,11 +169,12 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_box.send_keys(username)
         time.sleep(3) 
 
+        # Submit triggers
         user_box.send_keys(Keys.ENTER)
+        time.sleep(2)
         
         try:
-            time.sleep(1)
-            submit_btn = driver.find_element(By.XPATH, "//*[contains(text(), 'Sign up') or contains(text(), 'Submit')]")
+            submit_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
             driver.execute_script("arguments[0].click();", submit_btn)
         except:
             pass

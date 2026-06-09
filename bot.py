@@ -33,7 +33,7 @@ logging.basicConfig(
 WAITING_FOR_OTP = 1
 
 # Dummy URL - Replace with your actual locally hosted or remote URL
-TARGET_URL = "http://localhost:3000/signup" 
+TARGET_URL = "https://www.instagram.com/accounts/emailsignup/?next=" 
 
 def init_driver():
     """Initializes the Chrome WebDriver with Render-compatible options."""

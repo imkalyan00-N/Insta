@@ -24,6 +24,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select 
+from selenium.webdriver.common.keys import Keys # Kothaga add chesam
 
 try:
     from dotenv import load_dotenv
@@ -59,11 +60,8 @@ def init_driver():
     chrome_options.add_argument("--disable-gpu") 
     chrome_options.add_argument("--window-size=1920,1080") 
     chrome_options.add_argument("--disable-extensions")
-    chrome_options.add_argument("--no-zygote")
-    chrome_options.add_argument("--single-process")
     
-    # --- ANTI-BOT STEALTH OPTIONS ---
-    # Instagram ki real browser laaga kanipinchadaniki
+    # Anti-bot
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -73,8 +71,6 @@ def init_driver():
     chrome_options.add_experimental_option("prefs", prefs)
     
     driver = webdriver.Chrome(options=chrome_options)
-    
-    # Execute stealth JS script
     driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
         "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
     })
@@ -91,18 +87,6 @@ def generate_random_dob():
     month = random.choice(["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"])
     day = str(random.randint(1, 28))
     return year, month, day
-
-# Kotha Function: JS tho force ga type cheyadaniki
-def safe_type(driver, wait, name_attr, text, step_name):
-    try:
-        ele = wait.until(EC.presence_of_element_located((By.NAME, name_attr)))
-        # Box munduki scroll chesi JS tho click chestam
-        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", ele)
-        time.sleep(0.5)
-        driver.execute_script("arguments[0].focus();", ele)
-        ele.send_keys(text)
-    except Exception as e:
-        raise Exception(f"❌ '{step_name}' field daggara aagipoindi. Idi fill avvatledu.")
 
 async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
@@ -127,39 +111,55 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['password'] = password 
 
         driver.get(TARGET_URL)
-        time.sleep(5) # JS & React motham load avvadaniki 5 secs wait
+        time.sleep(6) # Page fully load avvadaniki
         
-        # Cookie popups emaina unte JS tho lepestam (to unblock UI)
         try:
             driver.execute_script("document.querySelectorAll('[role=\"dialog\"]').forEach(e => e.remove());")
         except:
             pass
-            
-        # 1-4 Fields (Force fill)
-        safe_type(driver, wait, "emailOrPhone", email, "Email")
-        safe_type(driver, wait, "password", password, "Password")
 
-        # Birthday Section
+        # === THE ULTIMATE BLIND BYPASS ===
+        # Screen meeda unna input fields anni oka list lo thechukuntunnam
+        inputs = wait.until(EC.presence_of_all_elements_located((By.TAG_NAME, "input")))
+        visible_inputs = [inp for inp in inputs if inp.is_displayed() and inp.get_attribute("type") != "hidden"]
+
+        if len(visible_inputs) < 4:
+            raise Exception("Form load kaledu leda Instagram block chesindi.")
+
+        # Varasaga perlatho sambandam lekunda fill chestunnam
+        email_box = visible_inputs[0]
+        pass_box = visible_inputs[1]
+        name_box = visible_inputs[2]
+        user_box = visible_inputs[3]
+
+        email_box.click()
+        email_box.send_keys(email)
+        time.sleep(1)
+
+        pass_box.click()
+        pass_box.send_keys(password)
+        time.sleep(1)
+
+        # DOB Section
         try:
             year, month, day = generate_random_dob()
-            month_box = Select(wait.until(EC.presence_of_element_located((By.XPATH, "//select[@title='Month:']"))))
-            month_box.select_by_visible_text(month)
-            
-            day_box = Select(driver.find_element(By.XPATH, "//select[@title='Day:']"))
-            day_box.select_by_visible_text(day)
-            
-            year_box = Select(driver.find_element(By.XPATH, "//select[@title='Year:']"))
-            year_box.select_by_visible_text(year)
-        except Exception:
-            logging.info("DOB dropdowns kanipinchaledu, next step ki velthondi.")
+            selects = driver.find_elements(By.TAG_NAME, "select")
+            if len(selects) >= 3:
+                Select(selects[0]).select_by_visible_text(month)
+                Select(selects[1]).select_by_visible_text(day)
+                Select(selects[2]).select_by_visible_text(year)
+        except Exception as e:
+            logging.info("DOB dropdowns catch.")
 
-        safe_type(driver, wait, "fullName", full_name, "Full Name")
-        safe_type(driver, wait, "username", username, "Username")
-        
-        time.sleep(3) 
+        name_box.click()
+        name_box.send_keys(full_name)
+        time.sleep(1)
 
-        # Submit Button Force Click
-        submit_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//button[@type='submit']")))
+        user_box.click()
+        user_box.send_keys(username)
+        time.sleep(3)
+
+        submit_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
         driver.execute_script("arguments[0].click();", submit_btn)
 
         wait.until(EC.presence_of_element_located((By.NAME, "email_confirmation_code")))
@@ -208,7 +208,6 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
         confirm_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(text(), 'Next') or contains(text(), 'Confirm')]")))
         driver.execute_script("arguments[0].click();", confirm_btn)
 
-        # Skips (Using JS click to avoid overlap issues)
         time.sleep(4)
         try:
             skip_pic_btn = driver.find_element(By.XPATH, "//button[text()='Skip']")
@@ -237,14 +236,13 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     except Exception as e:
-        logging.error(f"Error in process_otp skips: {e}")
         if driver:
             try:
                 driver.save_screenshot("error_skips.png")
                 with open("error_skips.png", "rb") as photo:
                     await update.message.reply_photo(
                         photo=photo, 
-                        caption=f"⚠️ **Error vachindi!** OTP submission leda Skip steps daggara aagipoindi.\n\n`{str(e)[:300]}`",
+                        caption=f"⚠️ **Error vachindi!**\n\n`{str(e)[:300]}`",
                         parse_mode="Markdown"
                     )
             except Exception:

@@ -23,7 +23,6 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import Select 
 from selenium.webdriver.common.keys import Keys 
 
 try:
@@ -84,8 +83,8 @@ def generate_strong_password(length=12):
 
 def generate_random_dob():
     year = str(random.randint(1990, 2005))
-    month = str(random.randint(1, 12)) 
-    day = str(random.randint(1, 28))
+    month = str(random.randint(1, 12)) # Exact Month Number
+    day = str(random.randint(1, 28))   # Exact Day Number
     return year, month, day
 
 async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -138,28 +137,38 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         time.sleep(1)
 
         # ==========================================
-        # ULTIMATE JS DOB FIX (For React apps)
+        # KOTHA CLICK LOGIC (Type cheyyakunda Click matrame)
         # ==========================================
         try:
             year, month, day = generate_random_dob()
-            js_script = f"""
-            var selects = document.querySelectorAll('select');
-            if(selects.length >= 3) {{
-                // Month
-                selects[0].value = '{month}';
-                selects[0].dispatchEvent(new Event('change', {{bubbles: true}}));
-                // Day
-                selects[1].value = '{day}';
-                selects[1].dispatchEvent(new Event('change', {{bubbles: true}}));
-                // Year
-                selects[2].value = '{year}';
-                selects[2].dispatchEvent(new Event('change', {{bubbles: true}}));
-            }}
-            """
-            driver.execute_script(js_script)
-            time.sleep(2) # React update avvadaniki wait
+            
+            # 1. Month Arrow meeda click -> list lo Number meeda click
+            month_box = wait.until(EC.presence_of_element_located((By.XPATH, "//select[@title='Month:']")))
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", month_box)
+            driver.execute_script("arguments[0].click();", month_box)
+            time.sleep(1)
+            month_opt = driver.find_element(By.XPATH, f"//select[@title='Month:']//option[@value='{month}']")
+            driver.execute_script("arguments[0].click();", month_opt)
+            time.sleep(0.5)
+
+            # 2. Day Arrow meeda click -> list lo Number meeda click
+            day_box = wait.until(EC.presence_of_element_located((By.XPATH, "//select[@title='Day:']")))
+            driver.execute_script("arguments[0].click();", day_box)
+            time.sleep(1)
+            day_opt = driver.find_element(By.XPATH, f"//select[@title='Day:']//option[@value='{day}']")
+            driver.execute_script("arguments[0].click();", day_opt)
+            time.sleep(0.5)
+
+            # 3. Year Arrow meeda click -> list lo Year meeda click
+            year_box = wait.until(EC.presence_of_element_located((By.XPATH, "//select[@title='Year:']")))
+            driver.execute_script("arguments[0].click();", year_box)
+            time.sleep(1)
+            year_opt = driver.find_element(By.XPATH, f"//select[@title='Year:']//option[@value='{year}']")
+            driver.execute_script("arguments[0].click();", year_opt)
+            time.sleep(1)
+
         except Exception as e:
-            logging.info(f"DOB JS fail ayyindi: {e}")
+            logging.info(f"DOB Clicks catch ayyindi: {e}")
 
         name_box.click()
         name_box.send_keys(full_name)
@@ -169,12 +178,12 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_box.send_keys(username)
         time.sleep(3) 
 
-        # Submit triggers
+        # Validation tick ravadaniki wait chesi direct ga ENTER nokkutundi
         user_box.send_keys(Keys.ENTER)
-        time.sleep(2)
+        time.sleep(3)
         
         try:
-            submit_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
+            submit_btn = driver.find_element(By.XPATH, "//*[contains(text(), 'Sign up') or contains(text(), 'Submit')]")
             driver.execute_script("arguments[0].click();", submit_btn)
         except:
             pass

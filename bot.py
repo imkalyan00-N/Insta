@@ -99,6 +99,15 @@ def snap(driver, name):
     except:
         pass
 
+# Universal Next Button Clicker
+def click_next(driver):
+    buttons = driver.find_elements(By.TAG_NAME, "button")
+    for btn in buttons:
+        if btn.is_displayed() and ("next" in btn.text.lower() or "sign up" in btn.text.lower()):
+            driver.execute_script("arguments[0].click();", btn)
+            return True
+    return False
+
 async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     
@@ -129,41 +138,36 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # STEP 1: Open URL
         driver.get(TARGET_URL)
-        time.sleep(5) 
+        time.sleep(6) 
         snap(driver, "Page_Loaded")
 
         # ==========================================
-        # JAVASCRIPT FORCE CLICK FOR "Sign up with email"
+        # BRUTE-FORCE "Sign up with email" CLICK
         # ==========================================
         try:
-            js_click_email = """
-            var elements = document.querySelectorAll('button, div[role="button"], a, span, div');
-            for (var i = 0; i < elements.length; i++) {
-                var text = elements[i].innerText || elements[i].textContent;
-                if (text && (text.toLowerCase().includes('sign up with email') || text.toLowerCase().includes('email address'))) {
-                    elements[i].click();
-                    return true;
-                }
-            }
-            return false;
-            """
-            clicked = driver.execute_script(js_click_email)
-            if clicked:
-                time.sleep(3) # Wait for Email box to appear
-                snap(driver, "Switched_To_Email")
-            else:
-                logging.info("JS trick tho email button dorakaledu.")
+            elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'Sign up with email') or contains(text(), 'email')]")
+            for el in elements:
+                if el.is_displayed():
+                    driver.execute_script("arguments[0].click();", el)
+                    time.sleep(3)
+                    snap(driver, "Switched_To_Email")
+                    break
         except Exception as e:
-            logging.info(f"JS click failed: {e}")
+            logging.info(f"Email switch element error: {e}")
 
-        # STEP 2: Enter Email & Click Next
-        email_box = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@type='email' or contains(@name, 'email') or contains(@name, 'emailOrPhone')]")))
+        # STEP 2: Find First Visible Input Box (Guaranteed to work)
+        inputs = wait.until(EC.presence_of_all_elements_located((By.TAG_NAME, "input")))
+        visible_inputs = [inp for inp in inputs if inp.is_displayed() and inp.get_attribute("type") != "hidden"]
+        
+        if not visible_inputs:
+            raise Exception("Input box page lo asalu kanipinchaledu.")
+
+        email_box = visible_inputs[0]
         driver.execute_script("arguments[0].focus();", email_box)
         email_box.send_keys(email)
         snap(driver, "Email_Entered")
         
-        next_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(translate(text(), 'NEXT', 'next'), 'next')]")))
-        driver.execute_script("arguments[0].click();", next_btn)
+        click_next(driver)
 
         # STEP 3: Wait for OTP box
         wait.until(EC.presence_of_element_located((By.NAME, "email_confirmation_code")))
@@ -217,16 +221,16 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
         otp_box.send_keys(otp)
         snap(driver, "OTP_Entered")
         
-        next_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(translate(text(), 'NEXT', 'next'), 'next')]")))
-        driver.execute_script("arguments[0].click();", next_btn)
+        click_next(driver)
+        time.sleep(4)
 
         # STEP 4: Password Page
         pass_box = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@name='password' or @type='password']")))
         pass_box.send_keys(password)
         snap(driver, "Password_Entered")
         
-        next_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(translate(text(), 'NEXT', 'next'), 'next')]")))
-        driver.execute_script("arguments[0].click();", next_btn)
+        click_next(driver)
+        time.sleep(4)
 
         # STEP 5: Date of Birth Page
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "select")))
@@ -257,16 +261,16 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
         snap(driver, "DOB_Selected")
         time.sleep(1)
-        next_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(translate(text(), 'NEXT', 'next'), 'next')]")))
-        driver.execute_script("arguments[0].click();", next_btn)
+        click_next(driver)
+        time.sleep(4)
 
         # STEP 6: Name Page
         name_box = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@name='fullName' or contains(@name, 'name')]")))
         name_box.send_keys(full_name)
         snap(driver, "Name_Entered")
         
-        next_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(translate(text(), 'NEXT', 'next'), 'next')]")))
-        driver.execute_script("arguments[0].click();", next_btn)
+        click_next(driver)
+        time.sleep(4)
 
         # STEP 7: Username Page
         user_box = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@name='username']")))
@@ -275,17 +279,20 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_box.send_keys(Keys.DELETE)
         user_box.send_keys(username)
         
-        time.sleep(3)
+        time.sleep(4) # Wait for green tick
         snap(driver, "Username_Entered")
         
-        next_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(translate(text(), 'NEXT', 'next'), 'next') or contains(text(), 'Sign up')]")))
-        driver.execute_script("arguments[0].click();", next_btn)
+        click_next(driver)
+        time.sleep(5)
 
         # STEP 8: Terms and Policies Page
         try:
-            agree_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'I agree') or contains(text(), 'Agree')]")))
+            buttons = driver.find_elements(By.TAG_NAME, "button")
+            for btn in buttons:
+                if btn.is_displayed() and "agree" in btn.text.lower():
+                    driver.execute_script("arguments[0].click();", btn)
+                    break
             snap(driver, "Terms_Page")
-            driver.execute_script("arguments[0].click();", agree_btn)
             time.sleep(5) 
         except Exception as e:
             logging.info("I agree button skip ayyindi.")

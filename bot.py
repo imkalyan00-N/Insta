@@ -1,8 +1,11 @@
 import os
 import asyncio
 import logging
+import random
+import string
 import time
 import threading
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from telegram import Update
@@ -17,6 +20,11 @@ from telegram.ext import (
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys 
+from selenium.webdriver.common.action_chains import ActionChains
 
 try:
     from dotenv import load_dotenv
@@ -29,6 +37,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+WAITING_FOR_OTP = 1
 TARGET_URL = "https://www.instagram.com/accounts/emailsignup/" 
 
 class DummyHandler(BaseHTTPRequestHandler):
@@ -58,8 +67,8 @@ def init_driver():
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option("useAutomationExtension", False)
     
-    # Ee sari Images kuda load avvaniddam, appude exact ga page ela undo thelustundi
-    # prefs = {"profile.managed_default_content_settings.images": 2} (Removed for debugging)
+    prefs = {"profile.managed_default_content_settings.images": 2}
+    chrome_options.add_experimental_option("prefs", prefs)
     
     driver = webdriver.Chrome(options=chrome_options)
     driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
@@ -69,43 +78,220 @@ def init_driver():
     driver.set_page_load_timeout(30) 
     return driver
 
+def generate_strong_password(length=12):
+    chars = string.ascii_letters + string.digits + "!@#$%^&*"
+    return ''.join(random.choice(chars) for _ in range(length))
+
+def generate_random_dob():
+    year = str(random.randint(1990, 2005))
+    months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    month_text = random.choice(months)
+    day = str(random.randint(1, 28))
+    return year, month_text, day
 
 async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📸 Page load ayyaka asalu em kanipistondo Full Screenshot theestunnanu. Please wait...")
+    args = context.args
+    
+    if len(args) < 3:
+        await update.message.reply_text("Usage: /create <FullName> <Username> <Email>")
+        return ConversationHandler.END
+
+    email = args[-1]
+    username = args[-2]
+    full_name = " ".join(args[:-2])
+    password = generate_strong_password()
+
+    await update.message.reply_text(f"Starting signup process for {email}...")
 
     try:
         driver = init_driver()
+        wait = WebDriverWait(driver, 15) 
         
-        # 1. Open URL
+        context.user_data['driver'] = driver
+        context.user_data['username'] = username
+        context.user_data['password'] = password 
+
         driver.get(TARGET_URL)
+        time.sleep(6) 
         
-        # 2. Wait for a long time to let everything load (Popups, Captchas, etc.)
-        time.sleep(8) 
-        
-        # 3. Take Full Screenshot
-        driver.save_screenshot("full_page_debug.png")
-        
-        with open("full_page_debug.png", "rb") as photo:
-            await update.message.reply_photo(
-                photo=photo, 
-                caption="🔍 **Idiగో Bot ki kanipistunna real Instagram page!**\n\nIkkada emundo chudu, asalu form load ayyinda leka block chesara ani telisipotundi.",
-                parse_mode="Markdown"
-            )
+        try:
+            driver.execute_script("document.querySelectorAll('[role=\"dialog\"]').forEach(e => e.remove());")
+        except:
+            pass
 
-        # Print Current URL to see if it redirected
-        current_url = driver.current_url
-        await update.message.reply_text(f"🔗 **Current URL:** `{current_url}`", parse_mode="Markdown")
+        inputs = wait.until(EC.presence_of_all_elements_located((By.TAG_NAME, "input")))
+        visible_inputs = [inp for inp in inputs if inp.is_displayed() and inp.get_attribute("type") != "hidden"]
 
-        driver.quit()
-        return ConversationHandler.END
+        if len(visible_inputs) < 4:
+            raise Exception("Form load kaledu leda Instagram block chesindi.")
+
+        email_box = visible_inputs[0]
+        pass_box = visible_inputs[1]
+        name_box = visible_inputs[2]
+        user_box = visible_inputs[3]
+
+        # 1. Fill Email & Password
+        email_box.click()
+        email_box.send_keys(email)
+        time.sleep(1)
+
+        pass_box.click()
+        pass_box.send_keys(password)
+        time.sleep(1)
+
+        # ==========================================
+        # 2. THE REVERSE KEYBOARD HACK (DOB Fill)
+        # ==========================================
+        try:
+            year, month_text, day = generate_random_dob()
+            actions = ActionChains(driver)
+            
+            # Click the Name box first to set focus
+            name_box.click()
+            time.sleep(1)
+
+            # Go backwards: Name -> Shift+Tab -> Year
+            actions.key_down(Keys.SHIFT).send_keys(Keys.TAB).key_up(Keys.SHIFT)
+            actions.pause(0.5)
+            actions.send_keys(year)
+            actions.pause(0.5)
+
+            # Go backwards: Year -> Shift+Tab -> Day
+            actions.key_down(Keys.SHIFT).send_keys(Keys.TAB).key_up(Keys.SHIFT)
+            actions.pause(0.5)
+            actions.send_keys(day)
+            actions.pause(0.5)
+
+            # Go backwards: Day -> Shift+Tab -> Month
+            actions.key_down(Keys.SHIFT).send_keys(Keys.TAB).key_up(Keys.SHIFT)
+            actions.pause(0.5)
+            actions.send_keys(month_text)
+            actions.pause(1)
+
+            actions.perform()
+        except Exception as e:
+            logging.info(f"Keyboard DOB trick failed: {e}")
+
+        # 3. Fill Name & Username
+        name_box.click()
+        name_box.send_keys(full_name)
+        time.sleep(1)
+
+        user_box.click()
+        user_box.send_keys(username)
+        time.sleep(3) 
+
+        # 4. Press Enter to Submit
+        user_box.send_keys(Keys.ENTER)
+        
+        # Fallback click
+        try:
+            time.sleep(1)
+            submit_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
+            driver.execute_script("arguments[0].click();", submit_btn)
+        except:
+            pass
+
+        wait.until(EC.presence_of_element_located((By.NAME, "email_confirmation_code")))
+
+        await update.message.reply_text("✅ Form submitted successfully! Please check your email and reply with the OTP.")
+        return WAITING_FOR_OTP
 
     except Exception as e:
         error_msg = str(e)
-        logging.error(f"Error: {error_msg}")
-        await update.message.reply_text(f"⚠️ **Error!**\n\n`{error_msg[:300]}`", parse_mode="Markdown")
+        logging.error(f"Error in start_signup: {error_msg}")
+        
         if 'driver' in locals() and driver is not None:
+            try:
+                driver.save_screenshot("error_form.png")
+                with open("error_form.png", "rb") as photo:
+                    await update.message.reply_photo(
+                        photo=photo, 
+                        caption=f"⚠️ **Error!**\n\n`{error_msg[:300]}`",
+                        parse_mode="Markdown"
+                    )
+            except Exception:
+                pass
             driver.quit()
         return ConversationHandler.END
+
+
+async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    otp = update.message.text
+    driver = context.user_data.get('driver')
+    username = context.user_data.get('username')
+    password = context.user_data.get('password') 
+
+    if not driver:
+        await update.message.reply_text("Browser session lost. Please start over with /create.")
+        return ConversationHandler.END
+
+    await update.message.reply_text("OTP received. Skipping setup steps... Please wait.")
+
+    try:
+        wait = WebDriverWait(driver, 15)
+
+        otp_input = wait.until(EC.presence_of_element_located((By.NAME, "email_confirmation_code")))
+        driver.execute_script("arguments[0].focus();", otp_input)
+        otp_input.send_keys(otp)
+        
+        confirm_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(text(), 'Next') or contains(text(), 'Confirm')]")))
+        driver.execute_script("arguments[0].click();", confirm_btn)
+
+        time.sleep(4)
+        try:
+            skip_pic_btn = driver.find_element(By.XPATH, "//button[text()='Skip']")
+            driver.execute_script("arguments[0].click();", skip_pic_btn)
+        except: pass
+        
+        time.sleep(3)
+        try:
+            skip_friends_btn = driver.find_element(By.XPATH, "//button[text()='Skip']")
+            driver.execute_script("arguments[0].click();", skip_friends_btn)
+        except: pass
+        
+        time.sleep(3)
+        try:
+            skip_suggested_btn = driver.find_element(By.XPATH, "//button[text()='Skip' or text()='Next']")
+            driver.execute_script("arguments[0].click();", skip_suggested_btn)
+        except: pass
+
+        wait.until(EC.presence_of_element_located((By.XPATH, "//*[@aria-label='Home']"))) 
+        
+        await update.message.reply_text(
+            f"✅ **Success!** Account created successfully and setup skipped.\n\n"
+            f"👤 **Username:** `{username}`\n"
+            f"🔐 **Password:** `{password}`", 
+            parse_mode="Markdown"
+        )
+
+    except Exception as e:
+        if driver:
+            try:
+                driver.save_screenshot("error_skips.png")
+                with open("error_skips.png", "rb") as photo:
+                    await update.message.reply_photo(
+                        photo=photo, 
+                        caption=f"⚠️ **Error vachindi!**\n\n`{str(e)[:300]}`",
+                        parse_mode="Markdown"
+                    )
+            except Exception:
+                pass
+    finally:
+        if driver:
+            driver.quit()
+            context.user_data.clear()
+
+    return ConversationHandler.END
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    driver = context.user_data.get('driver')
+    if driver:
+        driver.quit()
+        context.user_data.clear()
+        
+    await update.message.reply_text("Signup process cancelled and browser closed.")
+    return ConversationHandler.END
 
 def main():
     BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -118,8 +304,10 @@ def main():
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("create", start_signup)],
-        states={},
-        fallbacks=[]
+        states={
+            WAITING_FOR_OTP: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_otp)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)]
     )
 
     app.add_handler(conv_handler)

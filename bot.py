@@ -4,7 +4,9 @@ import logging
 import random
 import string
 import time
+import threading
 from datetime import datetime
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from telegram import Update
 from telegram.ext import (
@@ -23,45 +25,64 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-# Set up logging to help track issues on Render
+# Local testing kosam .env file load chestundi (Render lo idi em effect chupinchadu)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+# Logging setup
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
-# Conversation state
+# Conversation states
 WAITING_FOR_OTP = 1
 
-# Dummy URL - Replace with your actual locally hosted or remote URL
+# ==========================================
+# 1. IKKADA NEE WEBSITE URL REPLACE CHEYYI
+# ==========================================
 TARGET_URL = "https://www.instagram.com/accounts/emailsignup/?next=" 
 
+# --- DUMMY WEB SERVER FOR RENDER FREE TIER ---
+class DummyHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b"Bot is running successfully on Render Free Tier!")
+
+def run_dummy_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(('0.0.0.0', port), DummyHandler)
+    server.serve_forever()
+# ---------------------------------------------
+
 def init_driver():
-    """Initializes the Chrome WebDriver with Render-compatible options."""
+    """Initializes Chrome WebDriver."""
     chrome_options = Options()
-    chrome_options.add_argument("--headless=new") # Modern headless mode
-    chrome_options.add_argument("--no-sandbox") # Bypass OS security model (crucial for Docker/Render)
-    chrome_options.add_argument("--disable-dev-shm-usage") # Overcome limited resource problems
+    chrome_options.add_argument("--headless=new") 
+    chrome_options.add_argument("--no-sandbox") 
+    chrome_options.add_argument("--disable-dev-shm-usage") 
     chrome_options.add_argument("--disable-gpu") 
-    chrome_options.add_argument("--window-size=1920,1080") # Ensure elements are visible
+    chrome_options.add_argument("--window-size=1920,1080") 
     
-    # Initialize driver 
     driver = webdriver.Chrome(options=chrome_options)
     return driver
 
 def generate_strong_password(length=12):
-    """Generates a random 12-character password."""
     chars = string.ascii_letters + string.digits + "!@#$%^&*"
     return ''.join(random.choice(chars) for _ in range(length))
 
 def generate_random_dob():
-    """Generates a random adult DOB (18+)."""
     year = str(random.randint(1990, 2005))
     month = str(random.randint(1, 12)).zfill(2)
     day = str(random.randint(1, 28)).zfill(2)
     return year, month, day
 
 async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Command handler: /create <FullName> <Username> <Email>"""
     args = context.args
     
     if len(args) < 3:
@@ -87,6 +108,10 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # STEP 1
         driver.get(TARGET_URL)
+        
+        # ==========================================
+        # 2. IKKADA NUNDI NEE LOCATORS REPLACE CHEYYI
+        # ==========================================
         signup_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Sign up with email address')]")))
         signup_btn.click()
 
@@ -97,7 +122,7 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         next_btn_1 = wait.until(EC.element_to_be_clickable((By.ID, "next_button_1")))
         next_btn_1.click()
 
-        # STEP 3 (Pause)
+        # STEP 3 (Pause for OTP)
         await update.message.reply_text("Email submitted. Please check your inbox and reply with the OTP.")
         return WAITING_FOR_OTP
 
@@ -109,7 +134,6 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
 async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Message handler: Receives OTP and finishes the automation."""
     otp = update.message.text
     driver = context.user_data.get('driver')
     full_name = context.user_data.get('full_name')
@@ -194,7 +218,6 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Cancels the conversation and cleans up the browser."""
     driver = context.user_data.get('driver')
     if driver:
         driver.quit()
@@ -204,8 +227,6 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 def main():
-    """Starts the Telegram bot."""
-    # Fetch token from environment variables
     BOT_TOKEN = os.getenv("BOT_TOKEN")
     
     if not BOT_TOKEN:
@@ -224,7 +245,10 @@ def main():
 
     app.add_handler(conv_handler)
 
-    print("Bot is running...")
+    # Start the dummy server in the background for Render Free Tier
+    threading.Thread(target=run_dummy_server, daemon=True).start()
+
+    print("Bot and Dummy Server are running...")
     app.run_polling()
 
 if __name__ == '__main__':

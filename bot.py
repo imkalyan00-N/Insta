@@ -39,9 +39,9 @@ logging.basicConfig(
 WAITING_FOR_OTP = 1
 
 # ==========================================
-# 1. URL REPLACE CHEYYI
+# 1. TARGET URL
 # ==========================================
-TARGET_URL = "https://www.instagram.com/accounts/emailsignup/" # Example: Change to your URL
+TARGET_URL = "https://www.instagram.com/accounts/emailsignup/" 
 
 # --- DUMMY WEB SERVER FOR RENDER FREE TIER ---
 class DummyHandler(BaseHTTPRequestHandler):
@@ -65,12 +65,12 @@ def init_driver():
     chrome_options.add_argument("--disable-gpu") 
     chrome_options.add_argument("--window-size=1920,1080") 
     
-    # --- KOTHA MEMORY-SAVING OPTIONS ---
+    # --- MEMORY-SAVING OPTIONS (Render free tier kosam) ---
     chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument("--no-zygote")
     chrome_options.add_argument("--single-process")
     
-    # Images load avvakunda aapadam (RAM save avtundi, fast ga load avtundi)
+    # Images load avvakunda aapadam (RAM save avtundi)
     prefs = {"profile.managed_default_content_settings.images": 2}
     chrome_options.add_experimental_option("prefs", prefs)
     
@@ -104,7 +104,7 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     email = args[-1]
     username = args[-2]
     full_name = " ".join(args[:-2])
-    password = generate_strong_password() # Password mundey generate chestunnam
+    password = generate_strong_password()
 
     await update.message.reply_text(f"Starting signup process for {email}...")
 
@@ -115,58 +115,60 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['driver'] = driver
         context.user_data['full_name'] = full_name
         context.user_data['username'] = username
-        context.user_data['password'] = password # Save for final message
+        context.user_data['password'] = password 
 
         # Open Site
         driver.get(TARGET_URL)
         
-        # ==========================================
-        # FORM FILLING (Anni oke page lo)
-        # Nuvvu ee locators update cheyyali nee site batti
-        # ==========================================
+        # Site load avvadaniki koncham extra time
+        time.sleep(3) 
         
         # 1. Email
-        email_input = wait.until(EC.presence_of_element_located((By.NAME, "emailOrPhone")))
+        email_input = wait.until(EC.presence_of_element_located((By.XPATH, "//input[contains(@aria-label, 'Mobile number or email')]")))
         email_input.send_keys(email)
 
         # 2. Password
-        pass_input = wait.until(EC.presence_of_element_located((By.NAME, "password")))
+        pass_input = wait.until(EC.presence_of_element_located((By.XPATH, "//input[contains(@aria-label, 'Password')]")))
         pass_input.send_keys(password)
 
-        # 3. Name
-        name_input = wait.until(EC.presence_of_element_located((By.NAME, "fullName")))
-        name_input.send_keys(full_name)
-
-        # 4. Username
-        user_input = wait.until(EC.presence_of_element_located((By.NAME, "username")))
-        user_input.send_keys(username)
-        
-        time.sleep(2) # Chinna pause validation kosam
-
-        # 5. Submit Button
-        submit_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@type='submit']")))
-        submit_btn.click()
-
-        # 6. Birthday Section (Idi submit kottaka popup ravachu leda form loney undochu, nee site batti marchu)
+        # 3. Birthday Section
         try:
             year, month, day = generate_random_dob()
             
-            month_input = wait.until(EC.presence_of_element_located((By.XPATH, "//select[@title='Month:']")))
-            month_input.send_keys(month)
+            month_box = wait.until(EC.element_to_be_clickable((By.XPATH, "//select[contains(@title, 'Month:')]")))
+            month_box.click()
+            month_option = driver.find_element(By.XPATH, f"//option[text()='{month}']")
+            month_option.click()
             
-            day_input = driver.find_element(By.XPATH, "//select[@title='Day:']")
-            day_input.send_keys(day)
+            day_box = driver.find_element(By.XPATH, "//select[contains(@title, 'Day:')]")
+            day_box.click()
+            day_option = driver.find_element(By.XPATH, f"//option[text()='{day}']")
+            day_option.click()
             
-            year_input = driver.find_element(By.XPATH, "//select[@title='Year:']")
-            year_input.send_keys(year)
-            
-            next_btn_dob = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Next')]")))
-            next_btn_dob.click()
-        except Exception:
-            logging.info("DOB section ledu leda skip ayyindi.")
+            year_box = driver.find_element(By.XPATH, "//select[contains(@title, 'Year:')]")
+            year_box.click()
+            year_option = driver.find_element(By.XPATH, f"//option[text()='{year}']")
+            year_option.click()
+        except Exception as e:
+            logging.info(f"DOB section catch: {e}")
 
-        # --- Wait for OTP input field to appear ---
-        wait.until(EC.presence_of_element_located((By.NAME, "email_confirmation_code")))
+        # 4. Name
+        name_input = wait.until(EC.presence_of_element_located((By.XPATH, "//input[contains(@aria-label, 'Full name')]")))
+        name_input.send_keys(full_name)
+
+        # 5. Username
+        user_input = wait.until(EC.presence_of_element_located((By.XPATH, "//input[contains(@aria-label, 'Username')]")))
+        user_input.send_keys(username)
+        
+        # Valiation tick ravadaniki wait
+        time.sleep(3) 
+
+        # 6. Submit Button
+        submit_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@type='submit' or contains(text(), 'Sign up')]")))
+        submit_btn.click()
+
+        # Wait for OTP input field to appear
+        wait.until(EC.presence_of_element_located((By.XPATH, "//input[contains(@name, 'email_confirmation_code') or contains(@aria-label, 'Confirmation code')]")))
 
         await update.message.reply_text("✅ Form submitted successfully! Please check your email and reply with the OTP.")
         return WAITING_FOR_OTP
@@ -193,7 +195,7 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     otp = update.message.text
     driver = context.user_data.get('driver')
     username = context.user_data.get('username')
-    password = context.user_data.get('password') # Fetch saved password
+    password = context.user_data.get('password') 
 
     if not driver:
         await update.message.reply_text("Browser session lost. Please start over with /create.")
@@ -205,7 +207,7 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wait = WebDriverWait(driver, 15)
 
         # STEP 1: Enter OTP & Confirm
-        otp_input = wait.until(EC.presence_of_element_located((By.NAME, "email_confirmation_code")))
+        otp_input = wait.until(EC.presence_of_element_located((By.XPATH, "//input[contains(@name, 'email_confirmation_code') or contains(@aria-label, 'Confirmation code')]")))
         otp_input.send_keys(otp)
         
         confirm_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Next') or contains(text(), 'Confirm')]")))
@@ -226,7 +228,6 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
         skip_suggested_btn.click()
 
         # STEP 6: Wait for Home Feed to load
-        # Nuvvu home icon leda profile icon locator ikkada ivvachu
         wait.until(EC.presence_of_element_located((By.XPATH, "//*[@aria-label='Home']"))) 
         
         await update.message.reply_text(

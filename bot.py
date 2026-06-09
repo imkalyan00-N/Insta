@@ -163,9 +163,22 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if 'driver' in locals() and driver is not None:
             snap(driver, "Crash_Start_Signup")
+            
+            # --- FIXED: Send Album on First Step Error ---
+            media = []
+            files = sorted(glob.glob("step_*.png"))
+            for f in files[-10:]: # Max 10 photos allow chestundi telegram
+                media.append(InputMediaPhoto(open(f, 'rb')))
+                
+            if media:
+                try:
+                    await update.message.reply_media_group(media=media)
+                except Exception as ex:
+                    pass
+            
             driver.quit()
             
-        await update.message.reply_text(f"⚠️ **Error at Start Signup!**\n\n`{error_msg[:300]}`", parse_mode="Markdown")
+        await update.message.reply_text(f"⚠️ **Error at Start Signup!**\n📸 Screenshots paina pampanu chudu.\n\n`{error_msg[:300]}`", parse_mode="Markdown")
         return ConversationHandler.END
 
 
@@ -291,13 +304,13 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if media:
                 try:
                     await update.message.reply_media_group(media=media)
-                    await update.message.reply_text(
-                        f"⚠️ **Error vachindi!**\n\n📸 Screenshots chudu ekkada fail ayyindo thelustundi.\n\n`{error_msg[:300]}`", 
-                        parse_mode="Markdown"
-                    )
                 except:
                     pass
                     
+            await update.message.reply_text(
+                f"⚠️ **Error vachindi!**\n\n📸 Screenshots chudu ekkada fail ayyindo thelustundi.\n\n`{error_msg[:300]}`", 
+                parse_mode="Markdown"
+            )
     finally:
         if driver:
             driver.quit()

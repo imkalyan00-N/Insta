@@ -25,7 +25,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-# Local testing kosam .env file load chestundi (Render lo idi em effect chupinchadu)
+# Local testing kosam .env file load chestundi
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -43,9 +43,9 @@ WAITING_FOR_OTP = 1
 
 # ==========================================
 # 1. IKKADA NEE WEBSITE URL REPLACE CHEYYI
+# (Mukhyamaina gurtu: Render lo localhost panicheyyadu!)
 # ==========================================
-TARGET_URL = "https://www.instagram.com/accounts/emailsignup/?next=" 
-
+TARGET_URL = "https://www.instagram.com/accounts/emailsignup"
 # --- DUMMY WEB SERVER FOR RENDER FREE TIER ---
 class DummyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -128,10 +128,27 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logging.error(f"Error in start_signup: {e}")
-        await update.message.reply_text("An error occurred during step 1 & 2. Aborting.")
-        if 'driver' in locals():
+        
+        # --- SCREENSHOT LOGIC ADDED HERE ---
+        if 'driver' in locals() and driver is not None:
+            try:
+                driver.save_screenshot("error_step1.png")
+                with open("error_step1.png", "rb") as photo:
+                    await update.message.reply_photo(
+                        photo=photo, 
+                        caption=f"⚠️ **Error vachindi!** Browser lo ee screen daggara aagipoindi.\n\n`{str(e)[:400]}`",
+                        parse_mode="Markdown"
+                    )
+            except Exception as ss_error:
+                logging.error(f"Screenshot theeyadam lo error: {ss_error}")
+                await update.message.reply_text(f"Error vachindi kani screenshot theeyalekapoya.\n\n`{str(e)[:400]}`", parse_mode="Markdown")
+            
             driver.quit()
+        else:
+            await update.message.reply_text(f"Browser start avvakamunde error vachindi. \n\n`{str(e)[:400]}`", parse_mode="Markdown")
+            
         return ConversationHandler.END
+
 
 async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     otp = update.message.text
@@ -208,8 +225,21 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logging.error(f"Error in process_otp: {e}")
-        await update.message.reply_text("An error occurred during final steps. Aborting.")
         
+        # --- SCREENSHOT LOGIC ADDED HERE ---
+        if driver:
+            try:
+                driver.save_screenshot("error_final.png")
+                with open("error_final.png", "rb") as photo:
+                    await update.message.reply_photo(
+                        photo=photo, 
+                        caption=f"⚠️ **Error vachindi (Final steps)!** Browser lo ee screen daggara aagipoindi.\n\n`{str(e)[:400]}`",
+                        parse_mode="Markdown"
+                    )
+            except Exception as ss_error:
+                logging.error(f"Screenshot error: {ss_error}")
+                await update.message.reply_text("An error occurred during final steps.")
+                
     finally:
         if driver:
             driver.quit()
@@ -245,7 +275,6 @@ def main():
 
     app.add_handler(conv_handler)
 
-    # Start the dummy server in the background for Render Free Tier
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
     print("Bot and Dummy Server are running...")

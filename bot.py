@@ -23,6 +23,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys 
 
 try:
     from dotenv import load_dotenv
@@ -59,6 +60,7 @@ def init_driver():
     chrome_options.add_argument("--window-size=1920,1080") 
     chrome_options.add_argument("--disable-extensions")
     
+    # Anti-bot
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -81,9 +83,12 @@ def generate_strong_password(length=12):
 
 def generate_random_dob():
     year = str(random.randint(1990, 2005))
-    month = str(random.randint(1, 12)) # Values will always be 1-12 regardless of text
+    month_idx = random.randint(1, 12)
+    months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+    month_text = months[month_idx - 1]
+    month_val = str(month_idx)
     day = str(random.randint(1, 28))
-    return year, month, day
+    return year, month_val, month_text, day
 
 async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
@@ -136,35 +141,34 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         time.sleep(1)
 
         # ==========================================
-        # EXACT CLICKING MECHANISM FOR DOB
-        # Nuvvu cheppina vidhangane arrow meeda click, tharvata option meeda click
+        # EXACT CLICK LOGIC (Handles Number OR Name OR ShortName)
         # ==========================================
         try:
-            year, month, day = generate_random_dob()
+            year, month_val, month_text, day = generate_random_dob()
             
-            # MONTH (Text leda number emunna value 1-12 untundi)
+            # MONTH (Checks value, full text, or short text)
             month_box = wait.until(EC.presence_of_element_located((By.XPATH, "//select[contains(@title, 'Month')]")))
             driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", month_box)
-            driver.execute_script("arguments[0].click();", month_box) # Click arrow
-            time.sleep(1) # List load avvadaniki wait
-            month_opt = driver.find_element(By.XPATH, f"//select[contains(@title, 'Month')]//option[@value='{month}']")
-            driver.execute_script("arguments[0].click();", month_opt) # Click option
+            driver.execute_script("arguments[0].click();", month_box)
+            time.sleep(1)
+            month_opt = driver.find_element(By.XPATH, f"//select[contains(@title, 'Month')]//option[@value='{month_val}' or text()='{month_text}' or text()='{month_text[:3]}']")
+            driver.execute_script("arguments[0].click();", month_opt)
             time.sleep(0.5)
 
             # DAY
             day_box = driver.find_element(By.XPATH, "//select[contains(@title, 'Day')]")
-            driver.execute_script("arguments[0].click();", day_box) # Click arrow
+            driver.execute_script("arguments[0].click();", day_box)
             time.sleep(1)
-            day_opt = driver.find_element(By.XPATH, f"//select[contains(@title, 'Day')]//option[@value='{day}']")
-            driver.execute_script("arguments[0].click();", day_opt) # Click option
+            day_opt = driver.find_element(By.XPATH, f"//select[contains(@title, 'Day')]//option[@value='{day}' or text()='{day}']")
+            driver.execute_script("arguments[0].click();", day_opt)
             time.sleep(0.5)
 
             # YEAR
             year_box = driver.find_element(By.XPATH, "//select[contains(@title, 'Year')]")
-            driver.execute_script("arguments[0].click();", year_box) # Click arrow
+            driver.execute_script("arguments[0].click();", year_box)
             time.sleep(1)
-            year_opt = driver.find_element(By.XPATH, f"//select[contains(@title, 'Year')]//option[@value='{year}']")
-            driver.execute_script("arguments[0].click();", year_opt) # Click option
+            year_opt = driver.find_element(By.XPATH, f"//select[contains(@title, 'Year')]//option[@value='{year}' or text()='{year}']")
+            driver.execute_script("arguments[0].click();", year_opt)
             time.sleep(1)
 
         except Exception as e:
@@ -186,7 +190,7 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
             time.sleep(0.5)
             driver.execute_script("arguments[0].click();", submit_btn)
         except:
-            pass
+            user_box.send_keys(Keys.ENTER)
 
         wait.until(EC.presence_of_element_located((By.NAME, "email_confirmation_code")))
 
@@ -222,7 +226,7 @@ async def process_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Browser session lost. Please start over with /create.")
         return ConversationHandler.END
 
-    await update.message.reply_text("OTP received. Skipping setup steps... Please wait.")
+    await update.message.reply_text("OTP received. Continuing automation... Please wait.")
 
     try:
         wait = WebDriverWait(driver, 15)

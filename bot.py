@@ -23,8 +23,6 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.keys import Keys 
-from selenium.webdriver.common.action_chains import ActionChains
 
 try:
     from dotenv import load_dotenv
@@ -61,7 +59,6 @@ def init_driver():
     chrome_options.add_argument("--window-size=1920,1080") 
     chrome_options.add_argument("--disable-extensions")
     
-    # Anti-bot
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -84,10 +81,9 @@ def generate_strong_password(length=12):
 
 def generate_random_dob():
     year = str(random.randint(1990, 2005))
-    months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-    month_text = random.choice(months)
+    month = str(random.randint(1, 12)) # Values will always be 1-12 regardless of text
     day = str(random.randint(1, 28))
-    return year, month_text, day
+    return year, month, day
 
 async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
@@ -140,37 +136,39 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         time.sleep(1)
 
         # ==========================================
-        # 2. THE REVERSE KEYBOARD HACK (DOB Fill)
+        # EXACT CLICKING MECHANISM FOR DOB
+        # Nuvvu cheppina vidhangane arrow meeda click, tharvata option meeda click
         # ==========================================
         try:
-            year, month_text, day = generate_random_dob()
-            actions = ActionChains(driver)
+            year, month, day = generate_random_dob()
             
-            # Click the Name box first to set focus
-            name_box.click()
+            # MONTH (Text leda number emunna value 1-12 untundi)
+            month_box = wait.until(EC.presence_of_element_located((By.XPATH, "//select[contains(@title, 'Month')]")))
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", month_box)
+            driver.execute_script("arguments[0].click();", month_box) # Click arrow
+            time.sleep(1) # List load avvadaniki wait
+            month_opt = driver.find_element(By.XPATH, f"//select[contains(@title, 'Month')]//option[@value='{month}']")
+            driver.execute_script("arguments[0].click();", month_opt) # Click option
+            time.sleep(0.5)
+
+            # DAY
+            day_box = driver.find_element(By.XPATH, "//select[contains(@title, 'Day')]")
+            driver.execute_script("arguments[0].click();", day_box) # Click arrow
+            time.sleep(1)
+            day_opt = driver.find_element(By.XPATH, f"//select[contains(@title, 'Day')]//option[@value='{day}']")
+            driver.execute_script("arguments[0].click();", day_opt) # Click option
+            time.sleep(0.5)
+
+            # YEAR
+            year_box = driver.find_element(By.XPATH, "//select[contains(@title, 'Year')]")
+            driver.execute_script("arguments[0].click();", year_box) # Click arrow
+            time.sleep(1)
+            year_opt = driver.find_element(By.XPATH, f"//select[contains(@title, 'Year')]//option[@value='{year}']")
+            driver.execute_script("arguments[0].click();", year_opt) # Click option
             time.sleep(1)
 
-            # Go backwards: Name -> Shift+Tab -> Year
-            actions.key_down(Keys.SHIFT).send_keys(Keys.TAB).key_up(Keys.SHIFT)
-            actions.pause(0.5)
-            actions.send_keys(year)
-            actions.pause(0.5)
-
-            # Go backwards: Year -> Shift+Tab -> Day
-            actions.key_down(Keys.SHIFT).send_keys(Keys.TAB).key_up(Keys.SHIFT)
-            actions.pause(0.5)
-            actions.send_keys(day)
-            actions.pause(0.5)
-
-            # Go backwards: Day -> Shift+Tab -> Month
-            actions.key_down(Keys.SHIFT).send_keys(Keys.TAB).key_up(Keys.SHIFT)
-            actions.pause(0.5)
-            actions.send_keys(month_text)
-            actions.pause(1)
-
-            actions.perform()
         except Exception as e:
-            logging.info(f"Keyboard DOB trick failed: {e}")
+            logging.info(f"DOB fail ayyindi: {e}")
 
         # 3. Fill Name & Username
         name_box.click()
@@ -181,13 +179,11 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_box.send_keys(username)
         time.sleep(3) 
 
-        # 4. Press Enter to Submit
-        user_box.send_keys(Keys.ENTER)
-        
-        # Fallback click
+        # 4. Click Submit Button
         try:
-            time.sleep(1)
             submit_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", submit_btn)
+            time.sleep(0.5)
             driver.execute_script("arguments[0].click();", submit_btn)
         except:
             pass

@@ -129,7 +129,7 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['username'] = username
         context.user_data['password'] = password 
 
-        # STEP 1: Open URL & Click "Sign up with email address"
+        # STEP 1: Open URL & Click "Sign up with email"
         driver.get(TARGET_URL)
         time.sleep(4) 
         snap(driver, "Page_Loaded")

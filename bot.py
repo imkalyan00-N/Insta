@@ -133,21 +133,28 @@ async def start_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         snap(driver, "Page_Loaded")
 
         # ==========================================
-        # EXACT FIX: CLICK "Sign up with email"
+        # JAVASCRIPT FORCE CLICK FOR "Sign up with email"
         # ==========================================
         try:
-            # Case insensitive search for "sign up with email"
-            email_switch_btn = wait.until(EC.presence_of_element_located((
-                By.XPATH, 
-                "//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'sign up with email')]"
-            )))
-            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", email_switch_btn)
-            time.sleep(1)
-            driver.execute_script("arguments[0].click();", email_switch_btn)
-            time.sleep(3) # Wait for Email box to load
-            snap(driver, "Switched_To_Email")
+            js_click_email = """
+            var elements = document.querySelectorAll('button, div[role="button"], a, span, div');
+            for (var i = 0; i < elements.length; i++) {
+                var text = elements[i].innerText || elements[i].textContent;
+                if (text && (text.toLowerCase().includes('sign up with email') || text.toLowerCase().includes('email address'))) {
+                    elements[i].click();
+                    return true;
+                }
+            }
+            return false;
+            """
+            clicked = driver.execute_script(js_click_email)
+            if clicked:
+                time.sleep(3) # Wait for Email box to appear
+                snap(driver, "Switched_To_Email")
+            else:
+                logging.info("JS trick tho email button dorakaledu.")
         except Exception as e:
-            logging.info(f"Could not find or click email switch: {e}")
+            logging.info(f"JS click failed: {e}")
 
         # STEP 2: Enter Email & Click Next
         email_box = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@type='email' or contains(@name, 'email') or contains(@name, 'emailOrPhone')]")))
